@@ -54,7 +54,7 @@ POST http://localhost:9999/user/payments
 Authorization: {{token}}
 Content-Type: application/x-www-form-urlencoded
 
-uuid=firstUuid&amount=500
+amount=500
 > {%
 
 client.test("Request executed successfully", function() {
@@ -62,13 +62,13 @@ client.test("Request executed successfully", function() {
 });
 %}
 
-### И еще
+### И другому пользователю добавим
 
 POST http://localhost:9999/user/payments
 Authorization: {{token}}
 Content-Type: application/x-www-form-urlencoded
 
-uuid=SecondUuid&amount=2500
+amount=3500
 > {%
 
 client.test("Request executed successfully", function() {
