@@ -8,7 +8,7 @@ import (
 
 var ErrNoAuthentication = errors.New("no authentication")
 
-var authenticationContextKey = &contextKey{"authentication context"}
+var AuthenticationContextKey = &contextKey{"authentication context"}
 
 type contextKey struct {
 	name string
@@ -36,17 +36,15 @@ func Authenticator(identifier IdentifierFunc, userDetails UserDetailsFunc) func(
 				writer.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-
-			ctx := context.WithValue(request.Context(), authenticationContextKey, profile)
+			ctx := context.WithValue(request.Context(), AuthenticationContextKey, profile)
 			request = request.WithContext(ctx)
-
 			handler.ServeHTTP(writer, request)
 		})
 	}
 }
 
 func Authentication(ctx context.Context) (interface{}, error) {
-	if value := ctx.Value(authenticationContextKey); value != nil {
+	if value := ctx.Value(AuthenticationContextKey); value != nil {
 		return value, nil
 	}
 	return nil, ErrNoAuthentication
