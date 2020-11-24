@@ -4,18 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/DaniilOr/restricted/cmd/service/app/dtos"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v4/pgxpool"
 )
 var ErrNoToken = errors.New("no token")
-var authenticationContextKey = &contextKey{"authentication context"}
 
-type contextKey struct {
-	name string
-}
-
-func (c *contextKey) String() string {
-	return c.name
-}
 type Service struct {
 	pool *pgxpool.Pool
 }
@@ -29,14 +22,7 @@ func NewService(pool *pgxpool.Pool) *Service {
 	return &Service{pool: pool}
 }
 
-func(s*Service) GetUserPayments(ctx context.Context, token string)([]*dtos.PaymentDTO, error){
-	var id int64
-	err := s.pool.QueryRow(ctx, `
-	SELECT userid FROM tokens WHERE id=$1
-	`, token).Scan(&id)
-	if err != nil{
-		return []*dtos.PaymentDTO{}, err
-	}
+func(s*Service) GetUserPayments(ctx context.Context, id int64)([]*dtos.PaymentDTO, error){
 	var payments []*dtos.PaymentDTO
 	rows, err := s.pool.Query(ctx,`
 	SELECT id, amount FROM payments WHERE senderid=$1 LIMIT 50
@@ -46,7 +32,10 @@ func(s*Service) GetUserPayments(ctx context.Context, token string)([]*dtos.Payme
 	}
 	for rows.Next(){
 		var payment dtos.PaymentDTO
-		rows.Scan(&payment.Id, &payment.Amount)
+		err := rows.Scan(&payment.Id, &payment.Amount)
+			if err != nil{
+				return []*dtos.PaymentDTO{}, err
+			}
 		payment.SenderId = id
 		payments = append(payments, &payment)
 	}
@@ -55,15 +44,9 @@ func(s*Service) GetUserPayments(ctx context.Context, token string)([]*dtos.Payme
 	}
 	return payments, nil
 }
-func(s*Service) AddUserPayments(ctx context.Context, token string, uid string, amount int64)(error){
-	var id int64
-	err := s.pool.QueryRow(ctx, `
-	SELECT userid FROM tokens WHERE id=$1
-	`, token).Scan(&id)
-	if err != nil{
-		return err
-	}
-	_, err = s.pool.Exec(ctx,`
+func(s*Service) AddUserPayments(ctx context.Context, id int64, amount int64)(error){
+	uid :=  uuid.New()
+	_, err := s.pool.Exec(ctx,`
 	INSERT INTO payments(id, senderid, amount) VALUES($1, $2, $3)
 	`, uid, id, amount)
 	if err != nil{
@@ -81,7 +64,10 @@ func(s*Service) GetAllPayments(ctx context.Context)([]*dtos.PaymentDTO, error){
 	}
 	for rows.Next(){
 		var payment dtos.PaymentDTO
-		rows.Scan(&payment.Id, &payment.SenderId, &payment.Amount)
+		err := rows.Scan(&payment.Id, &payment.SenderId, &payment.Amount)
+		if err != nil{
+			return []*dtos.PaymentDTO{}, err
+		}
 		payments = append(payments, &payment)
 	}
 	if rows.Err()!=nil{
