@@ -15,7 +15,6 @@ import (
 "net/http"
 	"strconv"
 )
-
 type Server struct {
 	securitySvc *security.Service
 	businessSvc *business.Service
@@ -88,8 +87,7 @@ func (s *Server) handleRegister(writer http.ResponseWriter, request *http.Reques
 		return
 	}
 
-	writer.Header().Set("Content-Type", "application/json")
-	_, err = writer.Write(respBody)
+	err = makeResponse(respBody, http.StatusOK, writer)
 	if err != nil {
 		log.Print(err)
 	}
@@ -116,6 +114,7 @@ func (s *Server) handleLogin(writer http.ResponseWriter, request *http.Request) 
 	data := &dtos.TokenDTO{Token: token}
 	respBody, err := json.Marshal(data)
 	if err != nil {
+		log.Println(err)
 		writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -152,31 +151,22 @@ func (s *Server) handleUser(writer http.ResponseWriter, request *http.Request) {
 }
 
 func(s*Server) handleGetPayments(writer http.ResponseWriter, request * http.Request){
-	token := request.Header.Get("Authorization")
-	payments, err := s.paymentsSvc.GetUserPayments(request.Context(), token)
+	id := request.Context().Value(authenticator.AuthenticationContextKey).(*security.UserDetails).ID
+	paymentsList, err := s.paymentsSvc.GetUserPayments(request.Context(), id)
 	if err != nil{
 		log.Println(err)
-		writer.WriteHeader(http.StatusInternalServerError)
+		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-
-	data, err := json.Marshal(payments)
-	writer.Header().Set("Content-Type", "application/json")
-	_, err = writer.Write(data)
-	if err != nil {
-		log.Print(err)
-		writer.WriteHeader(http.StatusInternalServerError)
+	err = makeResponse(paymentsList, http.StatusOK, writer)
+	if err != nil{
+		log.Println(err)
 		return
 	}
 }
 
 func(s*Server) handlePostPayment(writer http.ResponseWriter, request * http.Request){
-	token := request.Header.Get("Authorization")
-	uuid := request.PostFormValue("uuid")
-	if uuid == ""{
-		writer.WriteHeader(http.StatusBadRequest)
-		return
-	}
+	id := request.Context().Value(authenticator.AuthenticationContextKey).(*security.UserDetails).ID
 	amountS := request.PostFormValue("amount")
 	if amountS == ""{
 		writer.WriteHeader(http.StatusBadRequest)
@@ -187,32 +177,18 @@ func(s*Server) handlePostPayment(writer http.ResponseWriter, request * http.Requ
 		writer.WriteHeader(http.StatusBadRequest)
 		return
 	}
-	err = s.paymentsSvc.AddUserPayments(request.Context(), token, uuid, amount)
+	err = s.paymentsSvc.AddUserPayments(request.Context(), id, amount)
 	if err != nil{
-		result := dtos.ResultDTO{Result: "Error"}
-		data, err := json.Marshal(result)
-		if err != nil {
-			log.Print(err)
-			writer.WriteHeader(http.StatusInternalServerError)
-			return
-		}
-		_, err = writer.Write(data)
-		if err != nil {
-			log.Print(err)
-			writer.WriteHeader(http.StatusInternalServerError)
+		log.Println(err)
+		cerr := makeResponse(dtos.ResultDTO{Result: "Error"}, http.StatusOK, writer)
+		if cerr != nil{
+			log.Println(err)
 			return
 		}
 		return
 	}
-	writer.Header().Set("Content-Type", "application/json")
 	result := dtos.ResultDTO{Result: "Done"}
-	data, err := json.Marshal(result)
-	if err != nil {
-		log.Print(err)
-		writer.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	_, err = writer.Write(data)
+	err = makeResponse(result, http.StatusOK, writer)
 	if err != nil {
 		log.Print(err)
 		writer.WriteHeader(http.StatusInternalServerError)
@@ -221,18 +197,33 @@ func(s*Server) handlePostPayment(writer http.ResponseWriter, request * http.Requ
 	return
 }
 func (s*Server) handleViewPayments(writer http.ResponseWriter, request * http.Request){
-	payments, err := s.paymentsSvc.GetAllPayments(request.Context())
+	paymentsList, err := s.paymentsSvc.GetAllPayments(request.Context())
 	if err != nil{
 		log.Println(err)
 		writer.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	data, err := json.Marshal(payments)
-	writer.Header().Set("Content-Type", "application/json")
-	_, err = writer.Write(data)
-	if err != nil {
-		log.Print(err)
-		writer.WriteHeader(http.StatusInternalServerError)
+	err = makeResponse(paymentsList, http.StatusOK, writer)
+	if err != nil{
+		log.Println(err)
 		return
 	}
 }
+func makeResponse(resp interface{}, status int, w http.ResponseWriter) error {
+	if resp != nil {
+		body, err := json.Marshal(resp)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+		w.Header().Add("Content-Type", "application/json")
+		_, err = w.Write(body)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return err
+		}
+	}
+	w.WriteHeader(status)
+	return nil
+}
+
